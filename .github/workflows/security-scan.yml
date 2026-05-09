@@ -24,7 +24,9 @@ jobs:
         
     - name: Install PipGuard
       run: |
-        python -m pip install pipguard-security
+        python -m pip install .
+        # Install additional dependencies that might be missing
+        python -m pip install rapidfuzz fastapi uvicorn
         
     - name: Scan requirements files
       run: |
