@@ -8,7 +8,7 @@ license = "MIT"
 packages = [{include = "pipguard"}]
 
 [tool.poetry.dependencies]
-python = "^3.9"
+python = "^3.10"
 typer = "^0.25.0"
 rich = "^15.0.0"
 requests = "^2.33.0"
