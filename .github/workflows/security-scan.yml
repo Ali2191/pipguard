@@ -1,0 +1,129 @@
+name: PipGuard Security Scan
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install PipGuard
+      run: |
+        python -m pip install pipguard-security
+        
+    - name: Scan requirements files
+      run: |
+        echo "🔍 Scanning for suspicious packages..."
+        
+        # Find requirements files
+        find . -name "requirements*.txt" -type f | while read file; do
+          echo "📄 Scanning $file"
+          python -m pipguard scan "$file" --format json > "scan_$(basename $file).json" || true
+        done
+        
+        # Scan setup.py for dependencies
+        if [ -f "setup.py" ]; then
+          echo "📄 Scanning setup.py"
+          python -m pipguard analyze "$(python setup.py --name)" --format json > setup_analysis.json || true
+        fi
+        
+    - name: Check installed packages
+      run: |
+        echo "🔍 Auditing installed packages..."
+        python -m pipguard audit . --format json > audit_results.json || true
+        
+    - name: Generate security report
+      run: |
+        echo "📊 Generating security report..."
+        python -m pipguard report . --format json > security_report.json || true
+        
+    - name: Upload scan results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: security-scan-results
+        path: |
+          *.json
+        retention-days: 30
+        
+    - name: Comment on PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          
+          // Read scan results
+          let scanResults = [];
+          let highRiskPackages = [];
+          
+          try {
+            const reportData = fs.readFileSync('security_report.json', 'utf8');
+            const report = JSON.parse(reportData);
+            
+            if (report.results && report.results.length > 0) {
+              scanResults = report.results;
+              highRiskPackages = report.results.filter(pkg => pkg.risk_level === 'HIGH');
+            }
+          } catch (error) {
+            console.log('Could not read security report:', error);
+          }
+          
+          // Create comment
+          let commentBody = '## 🔍 PipGuard Security Scan\n\n';
+          
+          if (highRiskPackages.length > 0) {
+            commentBody += '### 🚨 HIGH RISK PACKAGES DETECTED\n\n';
+            commentBody += '| Package | Risk Level | Score | Reasons |\n';
+            commentBody += '|---------|-------------|-------|--------|\n';
+            
+            highRiskPackages.forEach(pkg => {
+              commentBody += `| \`${pkg.package_name}\` | ${pkg.risk_level} | ${pkg.risk_score} | ${pkg.reasons.join(', ')} |\n`;
+            });
+            
+            commentBody += '\n⚠️ **These packages show strong indicators of being malicious and should NOT be installed.**\n\n';
+            commentBody += '### 🔧 Recommendations\n\n';
+            commentBody += '1. Review each package manually before installation\n';
+            commentBody += '2. Consider using `pipguard install <package>` instead of `pip install <package>`\n';
+            commentBody += '3. Check package maintainers and repository history\n';
+          } else {
+            commentBody += '✅ **No high-risk packages detected**\n\n';
+            commentBody += 'All packages appear safe for installation.\n';
+          }
+          
+          commentBody += '\n---\n';
+          commentBody += '*This scan was performed automatically by PipGuard Security Scan*\n';
+          commentBody += '*Scan results are attached as artifacts to this PR*\n';
+          
+          // Post comment
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: commentBody
+          }).then(response => {
+            console.log('Comment posted successfully');
+          }).catch(error => {
+            console.error('Failed to post comment:', error);
+          });
+        
+    - name: Check for failures
+      if: failure()
+      run: |
+        echo "❌ Security scan failed"
+        exit 1

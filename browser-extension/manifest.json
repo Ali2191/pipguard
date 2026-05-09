@@ -1,0 +1,50 @@
+{
+  "manifest_version": 3,
+  "name": "PipGuard Security",
+  "version": "0.1.0",
+  "description": "Real-time protection against malicious AI-generated Python packages",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting",
+    "host_permissions"
+  ],
+  "host_permissions": [
+    {
+      "matches": ["<all_urls>"],
+      "permissions": ["clipboardRead", "storage"]
+    }
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chat.openai.com/*",
+        "https://claude.ai/*",
+        "https://gemini.google.com/*",
+        "https://copilot.github.com/*",
+        "https://*.anthropic.com/*"
+      ],
+      "js": ["content.js"]
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["background.js"]
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}
